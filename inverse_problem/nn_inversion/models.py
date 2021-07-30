@@ -13,47 +13,26 @@ class HyperParams:
     """
     Attributes:
     n_input: int, input size
-
     predict_ind: list, parameters to predict
-
     top_output: int, output size for top model, i.e. number of parameters to predict
-
     transform_type: str, transformation type to be applied to data
-
     mode:
-
     logB: bool,
-
     factors: list
-
     cont_scale: int? continuum scale ?
-
     norm_output: bool ?
-
     source: str, where to get data from
-
     hidden_size: int, hidden size for TopNet
-
     dropout: float, dropout rate
-
     bn: ?
-
     top_net: str, name of top net
-
     bottom_net: str, name of bottom net
-
     activation: str, activation layer in top net
-
     lr: float, learning rate for optimizer
-
     lr_decay: learning rate decay for optimizer
-
     weight_decay: weight rate decay for optimizer
-
     batch_size: int, num of batches
-
     n_epochs: int, num of epochs to train
-
     trainset: int, num of examples to use while training
     valset: int, num of examples to use while evaluation
     """
@@ -64,7 +43,7 @@ class HyperParams:
     hidden_dims = attr.ib(default=[200, 300])
     bottom_output = attr.ib(default=40)
     predict_ind = attr.ib(default=[0, 1, 2])
-    activation = attr.ib(default='relu')
+    activation = attr.ib(default='elu')
     val_split = attr.ib(default=0.1)
     top_output = attr.ib(default=3)
     top_layers = attr.ib(default=2)
@@ -175,16 +154,19 @@ class TopIndependentNet(BaseNet):
     """
         Task independent block, only one unit for target have own weight
     """
-
     def __init__(self, hps: HyperParams):
         super().__init__(hps)
         layers = []
         for i in range(hps.top_output):
             layers.append(nn.Sequential(
-                    MLPBlock(hps.bottom_output+1, self.activation, self.dropout, self.batch_norm, hps.hidden_dims),
-                    MLPReadout(hps.hidden_dims[-1], 1, self.activation, self.dropout, self.batch_norm, hps.top_layers))
+                    MLPBlock(hps.bottom_output+1, lambda x: x, self.dropout, self.batch_norm, hps.hidden_dims),
+                    MLPReadout(hps.hidden_dims[-1], 1, lambda x: x, self.dropout, self.batch_norm, hps.top_layers))
             )
-
+        for i in range(hps.top_output):
+            layers.append(nn.Sequential(
+                MLPBlock(hps.bottom_output + 1, self.activation, self.dropout, self.batch_norm, hps.hidden_dims),
+                MLPReadout(hps.hidden_dims[-1], 1, self.activation, self.dropout, self.batch_norm, hps.top_layers))
+            )
         self.task_layers = nn.ModuleList(layers)
 
     def forward(self, x):
@@ -194,7 +176,6 @@ class TopIndependentNet(BaseNet):
 class BottomSimpleMLPNet(BaseNet):
     """ Two-layer MLP forward propagation with dropout, bottom layer, takes plain input.
     """
-
     def __init__(self, hps: HyperParams):
         super().__init__(hps)
         self.fc1 = nn.Linear(hps.n_input, hps.hidden_size)
@@ -231,7 +212,6 @@ class BottomSimpleConv1d(BaseNet):
     def forward(self, x):
         x = self.conv1(x.squeeze(1))
         x = self.conv2(x)
-        # print(x.shape)
         x = x.view(x.size(0), -1)
         x = self.linear(x)
         return x

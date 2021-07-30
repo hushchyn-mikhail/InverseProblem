@@ -17,6 +17,8 @@ from inverse_problem.nn_inversion.transforms import normalize_output
 import numpy as np
 from astropy.io import fits
 
+import matplotlib.pyplot as plt
+
 
 class Model:
     """
@@ -73,14 +75,12 @@ class Model:
                                 lr=self.hps.lr, weight_decay=self.hps.weight_decay)
 
     def _init_scheduler(self):
-        # todo добавить patience в hps?
         return torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=3, verbose=True)
 
     def _init_tensorboard(self, logdir=None, comment=''):
         return SummaryWriter(log_dir=logdir, comment=comment)
 
     def load_pretrained_bottom(self, path_to_model, path_to_json):
-
         hps = HyperParams.from_file(path_to_json=path_to_json)
         model_common = Model(hps)
         model_common.load_model(path_to_model)
@@ -89,6 +89,10 @@ class Model:
         model_dict = self.net.state_dict()
         model_dict.update(pretrained_dict)
         self.net.load_state_dict(model_dict)
+
+    def mdn_cost(self, mu, sigma, y):
+        dist = torch.distributions.Normal(mu, sigma)
+        return torch.mean(-dist.log_prob(y))
 
     def fit_step(self, dataloader, pretrained_bottom=False):
         train_loss = 0.0
@@ -100,7 +104,6 @@ class Model:
                     if self.hps.trainset == i:
                         break
                 x = [inputs['X'][0].to(self.device), inputs['X'][1].to(self.device)]
-                # print(x.shape)
                 y = inputs['Y'][:, self.hps.predict_ind].to(self.device)
                 if pretrained_bottom:
                     with torch.no_grad():
@@ -109,16 +112,20 @@ class Model:
                     outputs = self.net.top(outputs)
                 else:
                     outputs = self.net(x)
+                    outputs_mean = outputs[:, :11]
+                    outputs_sigma = outputs[:, 11:]
+                    outputs_sigma = outputs_sigma - torch.ones(outputs_sigma.shape)*np.min(outputs_sigma.detach().numpy()) + torch.ones(outputs_sigma.shape)*0.001
+
                 if "independent" in self.hps.hps_name:
                     self.optimizer.zero_grad()
-                    losses = [self.criterion(outputs[:, ind], y[:, ind]) for ind in self.hps.predict_ind]
+                    # losses = [self.criterion(outputs[:, ind], y[:, ind]) for ind in self.hps.predict_ind]
+                    losses = [self.mdn_cost(outputs_mean[:, ind], outputs_sigma[:, ind], y[:, ind]) for ind in self.hps.predict_ind]
                     loss = torch.stack(losses).mean()
-                    # loss.backward()
                     torch.autograd.backward(losses)
                     self.optimizer.step()
                 else:
                     self.optimizer.zero_grad()
-                    loss = self.criterion(outputs, y)
+                    loss = self.mdn_cost(outputs_mean, outputs_sigma, y)
                     loss.backward()
                     self.optimizer.step()
                 train_loss += loss.item()
@@ -139,7 +146,10 @@ class Model:
             y = inputs['Y'][:, self.hps.predict_ind].to(self.device)
             with torch.no_grad():
                 outputs = self.net(x)
-                loss = self.criterion(outputs, y)
+                outputs_mean = outputs[:, :11]
+                outputs_sigma = outputs[:, 11:]
+                outputs_sigma = outputs_sigma - torch.ones(outputs_sigma.shape) * np.min(outputs_sigma.detach().numpy()) + torch.ones(outputs_sigma.shape) * 0.001
+                loss = self.mdn_cost(outputs_mean, outputs_sigma, y)
                 val_loss += loss.item()
             val_it += 1
         return val_loss / val_it
@@ -175,6 +185,7 @@ class Model:
 
     def train(self, data_arr=None, filename=None, pregen=False, pretrained_bottom=False, path_to_save=None, save_epoch=[],
               ff=True, noise=True, scheduler=False, tensorboard=False, logdir=None, comment=''):
+
         """
             Function for model training
         Args:
@@ -194,8 +205,8 @@ class Model:
                                                     val_split=self.hps.val_split)
         best_valid_loss = float('inf')
         history = []
-        log_template = "\nEpoch {ep:03d} train_loss: {t_loss:0.4f} \
-         val_loss {v_loss:0.4f}"
+        log_template = "\nEpoch {ep:03d} train_loss: {t_loss:0.4f} val_loss {v_loss:0.4f}"
+
 
         with tqdm(desc="epoch", total=self.hps.n_epochs) as pbar_outer:
             for epoch in range(self.hps.n_epochs):
@@ -208,7 +219,6 @@ class Model:
 
                 if path_to_save:
                     if save_epoch:
-                        # todo чтобы каждый чекпоинт сохранялся в свой файл
                         if epoch in save_epoch:
                             self.save_model(path_to_save, epoch, val_loss)
                     elif val_loss < best_valid_loss:
@@ -226,7 +236,7 @@ class Model:
                 if logdir:
                     with open(os.path.join(logdir, 'history_' + self.hps.hps_name + '.txt'), 'w') as f:
                         for i, item in enumerate(history):
-                            f.write(f"Train loss in epoch {i}: {item[0]: .4f}, val_loss: {item[1]:.4f}\n")
+                            f.write(f"Train loss {i}: {item[0]: .4f}, val_loss: {item[1]:.4f}\n")
         return history
 
     def save_model(self, path, epoch=None, loss=None):
@@ -258,7 +268,6 @@ class Model:
         if epoch and loss:
             print('model was saved at {} epoch with {} validation loss'.format(epoch, loss))
         self.train(**kwargs)
-        # todo беда с номером эпохи
 
     def load_model(self, checkpoint_path):
         self.net.load_state_dict(torch.load(checkpoint_path, map_location=self.device)['model_state_dict'])
@@ -299,13 +308,14 @@ class Model:
 
     def predict_refer(self, refer_path):
         refer, names = open_param_file(refer_path, normalize=False)
+        print(refer.shape)
         shape = refer.shape
         params = refer.reshape(-1, 11)
         predicted = self.predict_by_batches(params, batch_size=1000)
+        print(predicted.shape)
         return predicted.reshape(shape)
 
     def predict_by_batches(self, params, batch_size=100):
-
         length = params.shape[0]
         n_batches = length//batch_size
         predict = np.zeros((length, 11))
@@ -316,13 +326,17 @@ class Model:
         return predict
 
 
-
     def predict_from_batch(self, param_vector, noise=True):
         data = self.generate_batch_spectrum(param_vector, noise=noise)
         self.net.eval()
         with torch.no_grad():
             predicted = self.net(data['X'])
+            predicted_mean = predicted[:, :11]
+            predicted_sigma = predicted[:, 11:]
+            predicted_sigma = predicted_sigma - torch.ones(predicted_sigma.shape) * np.min(predicted_sigma.detach().numpy()) + torch.ones(predicted_sigma.shape) * 0.001
+            predicted = torch.normal(mean=predicted_mean, std=predicted_sigma)
         return predicted.cpu().detach().numpy()
+
 
     def generate_batch_spectrum(self, param_vector, noise=True):
         line_vec = (6302.5, 2.5, 1)
