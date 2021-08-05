@@ -112,20 +112,26 @@ class Model:
                     outputs = self.net.top(outputs)
                 else:
                     outputs = self.net(x)
-                    outputs_mean = outputs[:, :11]
-                    outputs_sigma = outputs[:, 11:]
-                    outputs_sigma = outputs_sigma - torch.ones(outputs_sigma.shape)*np.min(outputs_sigma.detach().numpy()) + torch.ones(outputs_sigma.shape)*0.001
+                    if "dist" in self.hps.hps_name:
+                        outputs_mean = outputs[:, :11]
+                        outputs_sigma = torch.exp(outputs[:, 11:])
 
                 if "independent" in self.hps.hps_name:
                     self.optimizer.zero_grad()
-                    # losses = [self.criterion(outputs[:, ind], y[:, ind]) for ind in self.hps.predict_ind]
-                    losses = [self.mdn_cost(outputs_mean[:, ind], outputs_sigma[:, ind], y[:, ind]) for ind in self.hps.predict_ind]
+                    if "dist" in self.hps.hps_name:
+                        losses = [self.mdn_cost(outputs_mean[:, ind], outputs_sigma[:, ind], y[:, ind]) for ind in
+                                  self.hps.predict_ind]
+                    else:
+                        losses = [self.criterion(outputs[:, ind], y[:, ind]) for ind in self.hps.predict_ind]
                     loss = torch.stack(losses).mean()
                     torch.autograd.backward(losses)
                     self.optimizer.step()
                 else:
                     self.optimizer.zero_grad()
-                    loss = self.mdn_cost(outputs_mean, outputs_sigma, y)
+                    if "dist" in self.hps.hps_name:
+                        loss = self.mdn_cost(outputs_mean, outputs_sigma, y)
+                    else:
+                        loss = self.criterion(outputs, y)
                     loss.backward()
                     self.optimizer.step()
                 train_loss += loss.item()
@@ -146,15 +152,18 @@ class Model:
             y = inputs['Y'][:, self.hps.predict_ind].to(self.device)
             with torch.no_grad():
                 outputs = self.net(x)
-                outputs_mean = outputs[:, :11]
-                outputs_sigma = outputs[:, 11:]
-                outputs_sigma = outputs_sigma - torch.ones(outputs_sigma.shape) * np.min(outputs_sigma.detach().numpy()) + torch.ones(outputs_sigma.shape) * 0.001
-                loss = self.mdn_cost(outputs_mean, outputs_sigma, y)
+                if "dist" in self.hps.hps_name:
+                    outputs_mean = outputs[:, :11]
+                    outputs_sigma = torch.exp(outputs[:, 11:])
+                    loss = self.mdn_cost(outputs_mean, outputs_sigma, y)
+                else:
+                    loss = self.criterion(outputs, y)
                 val_loss += loss.item()
             val_it += 1
         return val_loss / val_it
 
-    def make_loader(self, data_arr=None, filename: Path = None, pregen = False, ff=True, noise=True, val_split=0.1) -> DataLoader:
+    def make_loader(self, data_arr=None, filename: Path = None, pregen=False, ff=True, noise=True,
+                    val_split=0.1) -> DataLoader:
         """
         Args:
             noise (bool): add noise or not
@@ -169,7 +178,7 @@ class Model:
         if data_arr is None and filename is None:
             raise AssertionError('you need provide data or path to data')
         if pregen:
-            #todo: such a hard coding
+            # todo: such a hard coding
             self.transform = getattr(transforms, 'mlp_batch_rescale')()
             transformed_dataset = PregenSpectrumDataset(data_arr=data_arr, param_path=filename, source=self.hps.source,
                                                         transform=self.transform, ff=ff, noise=noise)
@@ -183,7 +192,8 @@ class Model:
         val_loader = DataLoader(val_dataset, batch_size=self.hps.batch_size, shuffle=True)
         return train_loader, val_loader
 
-    def train(self, data_arr=None, filename=None, pregen=False, pretrained_bottom=False, path_to_save=None, save_epoch=[],
+    def train(self, data_arr=None, filename=None, pregen=False, pretrained_bottom=False, path_to_save=None,
+              save_epoch=[],
               ff=True, noise=True, scheduler=False, tensorboard=False, logdir=None, comment=''):
 
         """
@@ -206,7 +216,6 @@ class Model:
         best_valid_loss = float('inf')
         history = []
         log_template = "\nEpoch {ep:03d} train_loss: {t_loss:0.4f} val_loss {v_loss:0.4f}"
-
 
         with tqdm(desc="epoch", total=self.hps.n_epochs) as pbar_outer:
             for epoch in range(self.hps.n_epochs):
@@ -308,35 +317,29 @@ class Model:
 
     def predict_refer(self, refer_path):
         refer, names = open_param_file(refer_path, normalize=False)
-        print(refer.shape)
         shape = refer.shape
         params = refer.reshape(-1, 11)
         predicted = self.predict_by_batches(params, batch_size=1000)
-        print(predicted.shape)
         return predicted.reshape(shape)
 
     def predict_by_batches(self, params, batch_size=100):
         length = params.shape[0]
-        n_batches = length//batch_size
+        n_batches = length // batch_size
         predict = np.zeros((length, 11))
         for i in tqdm(range(n_batches)):
-            predict[i*batch_size:batch_size*(i+1), :] = self.predict_from_batch(params[i*batch_size:batch_size*(i+1), :])
-        if n_batches*batch_size < length:
-            predict[n_batches*batch_size:, :] = self.predict_from_batch(params[batch_size*n_batches:, :])
+            predict[i * batch_size:batch_size * (i + 1), :] = self.predict_from_batch(
+                params[i * batch_size:batch_size * (i + 1), :])
+        if n_batches * batch_size < length:
+            predict[n_batches * batch_size:, :] = self.predict_from_batch(params[batch_size * n_batches:, :])
         return predict
-
 
     def predict_from_batch(self, param_vector, noise=True):
         data = self.generate_batch_spectrum(param_vector, noise=noise)
         self.net.eval()
         with torch.no_grad():
             predicted = self.net(data['X'])
-            predicted_mean = predicted[:, :11]
-            predicted_sigma = predicted[:, 11:]
-            predicted_sigma = predicted_sigma - torch.ones(predicted_sigma.shape) * np.min(predicted_sigma.detach().numpy()) + torch.ones(predicted_sigma.shape) * 0.001
-            predicted = torch.normal(mean=predicted_mean, std=predicted_sigma)
+            predicted = predicted[:, :11]
         return predicted.cpu().detach().numpy()
-
 
     def generate_batch_spectrum(self, param_vector, noise=True):
         line_vec = (6302.5, 2.5, 1)

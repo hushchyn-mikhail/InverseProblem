@@ -1,0 +1,5 @@
+Train loss 0:  79.3768, val_loss: 1.0354
+Train loss 1:  1.0454, val_loss: 1.0354
+Train loss 2:  1.0447, val_loss: 1.0338
+Train loss 3:  1.0436, val_loss: 1.0324
+Train loss 4:  1.0424, val_loss: 1.0314

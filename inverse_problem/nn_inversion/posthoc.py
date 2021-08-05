@@ -8,10 +8,10 @@ import pandas as pd
 
 def open_param_file(path, normalize=True):
     refer = fits.open(path)
-    print('Open file with 36 available paramters, 11 will be selected')
+    # print('Open file with 36 available paramters, 11 will be selected')
     param_list = [1, 2, 3, 6, 8, 7, 33, 10, 5, 12, 13]
     names = [refer[i].header['EXTNAME'] for i in param_list]
-    print('\n'.join(names))
+    # print('\n'.join(names))
     data = np.zeros(shape=(512, 485, 11))
     for i, idx in enumerate(param_list):
         data[:, :, i] = refer[idx].data
