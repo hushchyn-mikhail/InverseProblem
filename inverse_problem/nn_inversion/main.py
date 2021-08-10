@@ -92,7 +92,8 @@ class Model:
 
     def mdn_cost(self, mu, sigma, y):
         dist = torch.distributions.Normal(mu, sigma)
-        return torch.mean(-dist.log_prob(y))
+        return torch.abs(torch.mean(-dist.log_prob(y)))
+        # return torch.mean(-dist.log_prob(y))
 
     def fit_step(self, dataloader, pretrained_bottom=False):
         train_loss = 0.0
