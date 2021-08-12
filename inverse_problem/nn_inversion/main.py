@@ -92,8 +92,8 @@ class Model:
 
     def mdn_cost(self, mu, sigma, y):
         dist = torch.distributions.Normal(mu, sigma)
-        return torch.abs(torch.mean(-dist.log_prob(y)))
-        # return torch.mean(-dist.log_prob(y))
+        # return torch.abs(torch.mean(-dist.log_prob(y)))
+        return torch.mean(-dist.log_prob(y))
 
     def fit_step(self, dataloader, pretrained_bottom=False):
         train_loss = 0.0
@@ -320,27 +320,42 @@ class Model:
         refer, names = open_param_file(refer_path, normalize=False)
         shape = refer.shape
         params = refer.reshape(-1, 11)
-        predicted = self.predict_by_batches(params, batch_size=1000)
-        return predicted.reshape(shape)
+        if "dist" in self.hps.hps_name:
+            predicted_mu, predicted_sigma = self.predict_by_batches(params, batch_size=1000)
+            return predicted_mu.reshape(shape), predicted_sigma.reshape(shape)
+        else:
+            predicted = self.predict_by_batches(params, batch_size=1000)
+            return predicted.reshape(shape)
 
     def predict_by_batches(self, params, batch_size=100):
         length = params.shape[0]
         n_batches = length // batch_size
-        predict = np.zeros((length, 11))
-        for i in tqdm(range(n_batches)):
-            predict[i * batch_size:batch_size * (i + 1), :] = self.predict_from_batch(
-                params[i * batch_size:batch_size * (i + 1), :])
-        if n_batches * batch_size < length:
-            predict[n_batches * batch_size:, :] = self.predict_from_batch(params[batch_size * n_batches:, :])
-        return predict
+        if "dist" in self.hps.hps_name:
+            predict_mu, predict_sigma = np.zeros((length, 11)), np.zeros((length, 11))
+            for i in tqdm(range(n_batches)):
+                predict_mu[i * batch_size:batch_size * (i + 1), :], predict_sigma[i * batch_size:batch_size * (i + 1), :] = self.predict_from_batch(params[i * batch_size:batch_size * (i + 1), :])
+            if n_batches * batch_size < length:
+                predict_mu[n_batches * batch_size:, :], predict_sigma[n_batches * batch_size:, :] = self.predict_from_batch(params[batch_size * n_batches:, :])
+            return predict_mu, predict_sigma
+        else:
+            predict = np.zeros((length, 11))
+            for i in tqdm(range(n_batches)):
+                predict[i * batch_size:batch_size * (i + 1), :] = self.predict_from_batch(
+                    params[i * batch_size:batch_size * (i + 1), :])
+            if n_batches * batch_size < length:
+                predict[n_batches * batch_size:, :] = self.predict_from_batch(params[batch_size * n_batches:, :])
+            return predict
 
     def predict_from_batch(self, param_vector, noise=True):
         data = self.generate_batch_spectrum(param_vector, noise=noise)
         self.net.eval()
         with torch.no_grad():
             predicted = self.net(data['X'])
-            predicted = predicted[:, :11]
-        return predicted.cpu().detach().numpy()
+        if "dist" in self.hps.hps_name:
+            predicted_mu, predicted_sigma = predicted[:, :11], torch.exp(predicted[:, 11:])
+            return predicted_mu.cpu().detach().numpy(), predicted_sigma.cpu().detach().numpy()
+        else:
+            return predicted.cpu().detach().numpy()
 
     def generate_batch_spectrum(self, param_vector, noise=True):
         line_vec = (6302.5, 2.5, 1)

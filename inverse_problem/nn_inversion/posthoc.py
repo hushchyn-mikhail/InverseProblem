@@ -4,6 +4,7 @@ from inverse_problem.nn_inversion.transforms import normalize_output
 from astropy.io import fits
 import numpy as np
 import pandas as pd
+import pylab
 
 
 def open_param_file(path, normalize=True):
@@ -11,7 +12,7 @@ def open_param_file(path, normalize=True):
     # print('Open file with 36 available paramters, 11 will be selected')
     param_list = [1, 2, 3, 6, 8, 7, 33, 10, 5, 12, 13]
     names = [refer[i].header['EXTNAME'] for i in param_list]
-    # print('\n'.join(names))
+    print('\n'.join(names))
     data = np.zeros(shape=(512, 485, 11))
     for i, idx in enumerate(param_list):
         data[:, :, i] = refer[idx].data
@@ -40,17 +41,17 @@ def plot_params(data):
     """Draw all 11 parameters at once
     data: np array (:, :, 11)
     """
-    names = ['Field Strength',
-             'Field Inclination',
-             'Field Azimuth',
-             'Doppler Width',
+    names = ['Field_Strength',
+             'Field_Inclination',
+             'Field_Azimuth',
+             'Doppler_Width',
              'Damping',
-             'Line Strength',
-             'S_0',
-             'S_1',
-             'Doppler Shift',
-             'Filling Factor',
-             'Stray light Doppler shift']
+             'Line_Strength',
+             'Original_Continuum_Intensity',
+             'Source_Function_Gradient',
+             'Doppler_Shift2',
+             'Stray_Light_Fill_Factor',
+             'Stray_Light_Shift']
 
     plt.figure(figsize=(12, 9))
     plt.axis('off')
@@ -81,3 +82,81 @@ def plot_spectra(pred, true):
     sc = axs[1].imshow(true, cmap='gray')
     fig.colorbar(sc, ax=axs[1])
     axs[1].set_title('True')
+
+
+def plot_2d(names, refer, predicted_mu, predicted_sigma, index=0):
+    '''
+        draws 2d graphs:
+        1. (x_true - x_pred)/sigma_pred vs x_true,
+        2. (x_true - x_pred) vs sigma_pred,
+        3. x_true vs sigma_pred.
+
+        param index: number of a graph, from 0 to 2
+        return: saves the graph to the ../img/ directory
+    '''
+    print(str(index+1)+'.')
+    titles = [r'$x_{true}$ vs $(x_{true} - x_{pred})/ \sigma_{pred}$',
+              r'$x_{true} - x_{pred}$ vs $\sigma_{pred}$',
+              r'$x_{true}$ vs $\sigma_{pred}$']
+
+    titles_for_save = [r'x_true vs (x_true - x_pred)\sigma_pred',
+                       r'x_true - x_pred vs sigma_pred',
+                       r'x_true vs sigma_pred']
+    fig, axs = pylab.subplots(3, 4, figsize=(19, 15), sharex=True, sharey=True)
+    fig.suptitle(titles[index], fontsize=20)
+
+    for i, ax in enumerate(axs.flat[:-1]):
+        x_true = refer[:, :, i].flatten()
+        x_pred = predicted_mu[:, :, i].flatten()
+        sigma_pred = predicted_sigma[:, :, i].flatten()
+        ax.set_title(names[i], weight='bold')
+        if index == 0:
+            ax.plot(x_true, (x_true - x_pred) / sigma_pred, 'o', color='red', alpha=0.1, markersize=4, markeredgewidth=0.0)
+        if index == 1:
+            ax.plot((x_true - x_pred), sigma_pred, 'o', color='red', alpha=0.1, markersize=4, markeredgewidth=0.0)
+        if index == 2:
+            ax.plot(x_true, sigma_pred, 'o', color='red', alpha=0.1, markersize=4, markeredgewidth=0.0)
+
+    if index == 0:
+        fig.supxlabel(r'$x_{true}$', fontsize=17)
+        fig.supylabel(r'$(x_{true} - x_{pred})/ \sigma_{pred}$', fontsize=17)
+    if index == 1:
+        fig.supxlabel(r'$x_{true} - x_{pred}$', fontsize=17)
+        fig.supylabel(r'$\sigma_{pred}$', fontsize=17)
+    if index == 2:
+        fig.supxlabel(r'$x_{true}$', fontsize=17)
+        fig.supylabel(r'$\sigma_{pred}$', fontsize=17)
+
+    fig.set_facecolor('xkcd:white')
+    fig.delaxes(axs[2][3])
+    pylab.tight_layout(pad=3)
+    fig.savefig("../img/" + titles_for_save[index] + ".png")
+    pylab.show()
+
+
+def plot_1d(names, refer, predicted_mu, predicted_sigma, x_lim=(-30, 30), bins=5):
+    '''
+        draws a histogram: (x_true - x_pred)/sigma_pred
+        param x_lim: limits along x axis
+        param bins: number of bins
+        return: saves the graph to the ../img/ directory
+    '''
+    fig, axs = pylab.subplots(3, 4, figsize=(19, 15), sharex=True, sharey=True)
+    fig.suptitle(r'$(x_{true} - x_{pred})/ \sigma_{pred}$', fontsize=20)
+
+    for i, ax in enumerate(axs.flat[:-1]):
+        x_true = refer[:, :, i].flatten()
+        x_pred = predicted_mu[:, :, i].flatten()
+        sigma_pred = predicted_sigma[:, :, i].flatten()
+        ax.set_title(names[i], weight='bold')
+        ax.hist((x_true - x_pred) / sigma_pred, bins=bins)
+
+    fig.supxlabel(r'$(x_{true} - x_{pred})/ \sigma_{pred}$', fontsize=17)
+    fig.supylabel('')
+    fig.set_facecolor('xkcd:white')
+    fig.delaxes(axs[2][3])
+    pylab.xlim(x_lim)
+    pylab.tight_layout(pad=3)
+    fig.savefig("../img/" + r'(x_true - x_pred)\sigma_pred' + ".png")
+    pylab.show()
+
