@@ -1,4 +1,4 @@
-{"hps_name": "hps_partly_independent_dist_mlp",
+{"hps_name": "hps_partly_independent_dist_mlp.json",
   "n_input": 224,
   "bottom_output": 100,
   "predict_ind": [0,1,2,3,4,5,6,7,8,9,10],

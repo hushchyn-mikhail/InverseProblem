@@ -39,6 +39,7 @@ class SpectrumDataset(Dataset):
             fileid = '12GslrX_J0Pw9jfr23oWoJ5gDb_I91Mj7'
             download_from_google_disc(fileid=fileid, dest=self.param_path)
         self.transform = transform
+        print(self.transform)
         if data_arr is not None:
             self.param_source = data_arr
         else:

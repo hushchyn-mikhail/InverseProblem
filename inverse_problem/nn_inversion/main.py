@@ -131,6 +131,7 @@ class Model:
                     self.optimizer.zero_grad()
                     if "dist" in self.hps.hps_name:
                         loss = self.mdn_cost(outputs_mean, outputs_sigma, y)
+
                     else:
                         loss = self.criterion(outputs, y)
                     loss.backward()
@@ -212,8 +213,11 @@ class Model:
         Returns:
             List, training process history
         """
+        # self.mask = mask
         train_loader, val_loader = self.make_loader(data_arr, filename, pregen=pregen, ff=ff, noise=noise,
                                                     val_split=self.hps.val_split)
+
+
         best_valid_loss = float('inf')
         history = []
         log_template = "\nEpoch {ep:03d} train_loss: {t_loss:0.4f} val_loss {v_loss:0.4f}"
@@ -316,8 +320,7 @@ class Model:
                 fits.writeto(predicted_tofits, out, hdr)
             return out, params
 
-    def predict_refer(self, refer_path):
-        refer, names = open_param_file(refer_path, normalize=False)
+    def predict_refer(self, refer):
         shape = refer.shape
         params = refer.reshape(-1, 11)
         if "dist" in self.hps.hps_name:
@@ -326,6 +329,7 @@ class Model:
         else:
             predicted = self.predict_by_batches(params, batch_size=1000)
             return predicted.reshape(shape)
+
 
     def predict_by_batches(self, params, batch_size=100):
         length = params.shape[0]
