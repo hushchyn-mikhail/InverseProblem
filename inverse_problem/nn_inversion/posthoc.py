@@ -248,14 +248,15 @@ def plot_analysis_graphs(refer, predicted, names, title=None, index=0, save_path
     plt.show()
 
 
-def plot_analysis_hist2d(refer, predicted, names=None, title=None, bins=100, index=0, save_path=None):
+def plot_analysis_hist2d(refer, predicted, names=None, index=0, title=None, bins=100, save_path=None):
     """
         draw hist2d:
         index = 0: (x_pred-x_true)/x_true vs x_true,
         index = 1: x_pred vs x_true.
     """
     if not title:
-        title = [r'$\left(x_{pred}-x_{true}\right) / x_{true}$ vs $x_{true}$', r'$x_{pred}$ vs $x_{true}$'][index]
+        title = [r'$\left(x_{pred}-x_{true}\right) / x_{true}$ vs $x_{true}$',
+                 r'$x_{pred}$ vs $x_{true}$'][index]
 
     if names is None:
         names = ['Field Strength',
@@ -307,6 +308,76 @@ def plot_analysis_hist2d(refer, predicted, names=None, title=None, bins=100, ind
     plt.colorbar(plot_params[3], cax=cax)
     plt.show()
 
+
+def plot_analysis_hist2d_up(refer, predicted_mu, predicted_sigma, names=None, index=0, title=None, bins=100,
+                            save_path=None):
+    """
+        draws 2d graphs:
+        1. (x_true - x_pred)/sigma_pred vs x_true,
+        2. (x_true - x_pred) vs sigma_pred,
+        3. x_true vs sigma_pred,
+    """
+    if not title:
+        title = [r'$\left(x_{true} - x_{pred}\right) / \sigma_{pred}$ vs $x_{true}$',
+                 r'$\sigma_{pred}$ vs $x_{true} - x_{pred}$',
+                 r'$\sigma_{pred}$ vs $x_{true}$'][index]
+
+    if names is None:
+        names = ['Field Strength',
+                 'Field Inclination',
+                 'Field Azimuth',
+                 'Doppler Width',
+                 'Damping',
+                 'Line Strength',
+                 'S_0',
+                 'S_1',
+                 'Doppler Shift',
+                 'Filling Factor',
+                 'Stray light Doppler shift']
+
+    refer_flat = refer.reshape(-1, 11)
+    predicted_mu_flat = predicted_mu.reshape(-1, 11)
+    predicted_sigma_flat = predicted_sigma.reshape(-1, 11)
+
+    fig, axs = plt.subplots(3, 4, figsize=(19, 15), constrained_layout=True)
+    fig.suptitle(title, fontsize=16)
+
+    for i, ax in enumerate(axs.flat[:-1]):
+        if index == 0:
+            X, Y = refer_flat[:, i], (refer_flat[:, i] - predicted_mu_flat[:, i]) / predicted_sigma_flat[:, i]
+        elif index == 1:
+            X, Y = refer_flat[:, i] - predicted_mu_flat[:, i], predicted_sigma_flat[:, i]
+        elif index == 2:
+            X, Y = refer_flat[:, i], predicted_sigma_flat[:, i]
+        else:
+            raise ValueError
+
+        ax.set_title(names[i], weight='bold')
+        plot_params = ax.hist2d(X, Y, bins=bins, norm=LogNorm())
+
+    if index == 0:
+        fig.supxlabel(r'$x_{true}$')
+        fig.supylabel(r'$\left(x_{true} - x_{pred}\right)/ \sigma_{pred}$')
+    elif index == 1:
+        fig.supxlabel(r'$x_{true} - x_{pred}$')
+        fig.supylabel(r'$\sigma_{pred}$')
+    elif index == 2:
+        fig.supxlabel(r'$x_{true}$')
+        fig.supylabel(r'$\sigma_{pred}$')
+    else:
+        raise ValueError
+
+    fig.set_facecolor('xkcd:white')
+    fig.delaxes(axs[2][3])
+
+    if save_path:
+        fig.savefig(save_path + ".png")
+
+    plt.subplots_adjust(right=0.8)
+    cax = plt.axes([0.85, 0.15, 0.05, 0.7])
+
+    plt.colorbar(plot_params[3], cax=cax)
+    plt.show()
 
 def open_spectrum_data(sp_folder, date, idx):
     """
