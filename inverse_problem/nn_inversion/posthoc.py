@@ -61,7 +61,7 @@ def compute_metrics(refer, predicted, index=None, names=None, save_path=None, ma
     refer = refer.reshape(-1, 11)
     predicted = predicted.reshape(-1, 11)
 
-    if mask:
+    if mask is not None:
         rows_mask = np.any(mask, axis=1)
 
         refer = refer.data[~rows_mask, :]
