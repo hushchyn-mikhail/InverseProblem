@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 import os
 import torch
 from inverse_problem.nn_inversion import normalize_spectrum
@@ -62,9 +63,11 @@ def compute_metrics(refer, predicted, index=None, names=None, save_path=None, ma
     predicted = predicted.reshape(-1, 11)
 
     if mask is not None:
+        mask = mask.reshape(-1, 11)
+
         rows_mask = np.any(mask, axis=1)
 
-        refer = refer.data[~rows_mask, :]
+        refer = refer[~rows_mask, :]
         predicted = predicted[~rows_mask, :]
 
     if index is None:
@@ -201,6 +204,108 @@ def plot_params(data, names=None):
         plt.imshow(data[:, :, i], cmap='gray')
         plt.axis('off')
     plt.tight_layout()
+
+
+def plot_analysis_graphs(refer, predicted, names, title=None, index=0, save_path=None):
+    """
+        draw 2d graphs:
+        index = 0: (x_pred-x_true)/x_true vs x_true
+        index = 1: x_pred vs x_true.
+    """
+    if not title:
+        title = ['(x_pred-x_true)/x_true vs x_true', 'x_pred vs x_true'][index]
+
+    refer_flat = refer.reshape(-1, 11)
+    predicted_flat = predicted.reshape(-1, 11)
+
+    fig, axs = plt.subplots(3, 4, figsize=(19, 15), constrained_layout=True)
+    fig.suptitle(title, fontsize=16)
+
+    for i, ax in enumerate(axs.flat[:-1]):
+        if index == 0:
+            X, Y = refer_flat[:, i], predicted_flat[:, i] - refer_flat[:, i]
+        elif index == 1:
+            X, Y = refer_flat[:, i], predicted_flat[:, i]
+        else:
+            theta = np.linspace(0, 2 * np.pi, 100)
+            X = 16 * (np.sin(theta) ** 3)
+            Y = 13 * np.cos(theta) - 5 * np.cos(2 * theta) - 2 * np.cos(3 * theta) - np.cos(4 * theta)
+        ax.set_title(names[i], weight='bold')
+        ax.plot(X, Y, 'o', color='red', alpha=0.1, markersize=4, markeredgewidth=0.0)
+
+    if index == 0:
+        fig.supxlabel(r'$x_{true}$')
+        fig.supylabel(r'$(x_{pred} - x_{true})/ x_{true}$')
+    elif index == 1:
+        fig.supxlabel(r'$x_{true}$')
+        fig.supylabel(r'$x_{pred}$')
+
+    fig.set_facecolor('xkcd:white')
+    fig.delaxes(axs[2][3])
+
+    if save_path:
+        fig.savefig(save_path + ".png")
+    plt.show()
+
+
+def plot_analysis_hist2d(refer, predicted, names=None, title=None, bins=100, index=0, save_path=None):
+    """
+        draw hist2d:
+        index = 0: (x_pred-x_true)/x_true vs x_true,
+        index = 1: x_pred vs x_true.
+    """
+    if not title:
+        title = [r'$\left(x_{pred}-x_{true}\right) / x_{true}$ vs $x_{true}$', r'$x_{pred}$ vs $x_{true}$'][index]
+
+    if names is None:
+        names = ['Field Strength',
+                 'Field Inclination',
+                 'Field Azimuth',
+                 'Doppler Width',
+                 'Damping',
+                 'Line Strength',
+                 'S_0',
+                 'S_1',
+                 'Doppler Shift',
+                 'Filling Factor',
+                 'Stray light Doppler shift']
+
+    refer_flat = refer.reshape(-1, 11)
+    predicted_flat = predicted.reshape(-1, 11)
+
+    fig, axs = plt.subplots(3, 4, figsize=(19, 15))
+    fig.suptitle(title, fontsize=19)
+
+    for i, ax in enumerate(axs.flat[:-1]):
+        if index == 0:
+            X, Y = refer_flat[:, i], predicted_flat[:, i] - refer_flat[:, i]
+        elif index == 1:
+            X, Y = refer_flat[:, i], predicted_flat[:, i]
+        else:
+            raise ValueError
+        ax.set_title(names[i], weight='bold')
+        plot_params = ax.hist2d(X, Y, bins=bins, norm=LogNorm())
+
+        if index == 0:
+            fig.supxlabel(r'$x_{true}$')
+            fig.supylabel(r'$\left(x_{pred} - x_{true}\right) / x_{true}$')
+        elif index == 1:
+            fig.supxlabel(r'$x_{true}$')
+            fig.supylabel(r'$x_{pred}$')
+        else:
+            raise ValueError
+
+    fig.set_facecolor('xkcd:white')
+    fig.delaxes(axs[2][3])
+
+    if save_path:
+        fig.savefig(save_path + ".png")
+
+    plt.subplots_adjust(right=0.8)
+    cax = plt.axes([0.85, 0.15, 0.05, 0.7])
+
+    plt.colorbar(plot_params[3], cax=cax)
+    plt.show()
 
 
 def open_spectrum_data(sp_folder, date, idx):
