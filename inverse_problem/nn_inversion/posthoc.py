@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import seaborn as sns
 from matplotlib.colors import LogNorm
 import os
 import torch
@@ -94,7 +95,7 @@ def plot_spectrum(sp_folder, date, path_to_refer, idx_0, idx_1):
     Plot spectrum, corresponding referens values of parameters and model spectrum
     idx_0 - index of line in one spectrum file (512), idx_1 - index of spectrum file sorted by time (873 in total)
     """
-    refer, names = open_param_file(path_to_refer, print_params=False, normalize=False)
+    # refer, names = open_param_file(path_to_refer, print_params=False, normalize=False)
     spectra_file = open_spectrum_data(sp_folder, date, idx_1)
     real_sp = real_spectra(spectra_file)
     full_line = real_sp[idx_0, :]
@@ -105,7 +106,7 @@ def plot_spectrum(sp_folder, date, path_to_refer, idx_0, idx_1):
     cont_int = np.max(full_line)
 
     for i in range(4):
-        ax[i // 2][i % 2].plot(full_line[i * 56:i * 56 + 56] / cont_int);
+        ax[i // 2][i % 2].plot(full_line[i * 56:i * 56 + 56] / cont_int)
         ax[i // 2][i % 2].set_title(f'Spectral line {line_type[i]}')
     fig.suptitle(f'Real spectrum with empiric intensity {cont_int :.1f}', fontsize=16, fontweight="bold")
     fig.set_tight_layout(tight=True)
@@ -123,7 +124,7 @@ def plot_model_spectrum(refer, names, idx_0, idx_1):
     print(', '.join([names[i] + f': {refer[idx_0, idx_1, i]:.2f}' for i in range(11)]))
 
     for i in range(4):
-        ax[i // 2][i % 2].plot(profile[0, :, i]);
+        ax[i // 2][i % 2].plot(profile[0, :, i])
         ax[i // 2][i % 2].set_title(f'Spectral line {line_type[i]}')
     fig.set_tight_layout(tight=True)
     fig.suptitle(f'Model spectrum with estimated intensity {obj.cont:.1f}', fontsize=16, fontweight="bold")
@@ -168,9 +169,9 @@ def plot_pred_vs_refer(predicted, refer, output_index=0, name=None):
         name = names[output_index]
     r2, mae, mse = compute_metrics(refer, predicted, output_index)
     fig, axs = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))
-    axs[0].imshow(predicted.reshape(refer.shape)[:, :, output_index], cmap='gray');
+    axs[0].imshow(predicted.reshape(refer.shape)[:, :, output_index], cmap='gray')
     axs[0].set_title("Predicted")
-    axs[1].imshow(refer[:, :, output_index], cmap='gray');
+    axs[1].imshow(refer[:, :, output_index], cmap='gray')
     axs[1].set_title("True output")
     axs[0].set_axis_off()
     axs[1].set_axis_off()
@@ -377,6 +378,36 @@ def plot_analysis_hist2d_up(refer, predicted_mu, predicted_sigma, names=None, in
     cax = plt.axes([0.85, 0.15, 0.05, 0.7])
 
     plt.colorbar(plot_params[3], cax=cax)
+    plt.show()
+
+
+def plot_hist_params_comparison(pars_arr1, pars_arr2, pars_names, plot_name='params_hist', bins=100, save_path=None):
+    pars_arr1 = pars_arr1.reshape(-1, 11)
+    pars_arr2 = pars_arr2.reshape(-1, 11)
+
+    fig, axs = plt.subplots(3, 4, figsize=(19, 15), constrained_layout=True)
+
+    for i, ax in enumerate(axs.flat[:-1]):
+        ax.set_yscale('log')
+        ax.set_title(pars_names[i], weight='bold')
+        # ax.set_xlim(0, 1)
+
+        sns.histplot(
+            pars_arr1[:, i], ax=ax, bins=bins, color='blue', label="predicted"
+        )
+        sns.histplot(
+            pars_arr2[:, i], ax=ax, bins=bins, color='red', alpha=0.6, label='refer'
+        )
+
+    fig.set_facecolor('xkcd:white')
+
+    h, l = ax.get_legend_handles_labels()
+    axs[2][3].legend(h, l, borderaxespad=0)
+    axs[2][3].axis("off")
+
+    if save_path:
+        fig.savefig(save_path + ".png")
+    plt.suptitle(plot_name, fontsize=18)
     plt.show()
 
 def open_spectrum_data(sp_folder, date, idx):
